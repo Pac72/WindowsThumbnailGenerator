@@ -137,8 +137,9 @@ namespace Thumbnail_Generator_Library
             {
                 outputImage.Write(filePath);
             }
-            catch (MagickBlobErrorException)
+            catch (Exception ex)
             {
+                Debug.WriteLine("ExportImage(" + filePath + "): EXCEPTION " + ex.Message);
                 return;
             }
         }
