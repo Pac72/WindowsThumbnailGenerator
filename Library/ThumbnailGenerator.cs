@@ -129,10 +129,7 @@ namespace Thumbnail_Generator_Library
         {
             Bitmap bmp = Bitmap.FromHbitmap(nativeHBitmap);
 
-            if (Bitmap.GetPixelFormatSize(bmp.PixelFormat) < 32)
-                return bmp;
-
-            return CreateAlphaBitmap(bmp, PixelFormat.Format32bppArgb);
+            return bmp;
         }
 
         public static Bitmap CreateAlphaBitmap(Bitmap srcBitmap, PixelFormat targetPixelFormat)
@@ -141,26 +138,42 @@ namespace Thumbnail_Generator_Library
 
             Rectangle bmpBounds = new Rectangle(0, 0, srcBitmap.Width, srcBitmap.Height);
 
-            BitmapData srcData = srcBitmap.LockBits(bmpBounds, ImageLockMode.ReadOnly, srcBitmap.PixelFormat);
-
             bool isAlplaBitmap = false;
+
+            BitmapData srcData = srcBitmap.LockBits(bmpBounds, ImageLockMode.ReadOnly, srcBitmap.PixelFormat);
 
             try
             {
-                for (int y = 0; y <= srcData.Height - 1; y++)
+                BitmapData destData = result.LockBits(bmpBounds, ImageLockMode.WriteOnly, targetPixelFormat);
+
+                try
                 {
-                    for (int x = 0; x <= srcData.Width - 1; x++)
+
+                    int lineLength = Math.Abs(srcData.Stride);
+                    byte[] buffer = new byte[lineLength];
+
+                    int srcOffset = 0;
+                    int destOffset = 0;
+                    for (int y = 0; y <= srcData.Height - 1; y++)
                     {
-                        Color pixelColor = Color.FromArgb(
-                            Marshal.ReadInt32(srcData.Scan0, (srcData.Stride * y) + (4 * x)));
+                        Marshal.Copy(IntPtr.Add(srcData.Scan0, srcOffset), buffer, 0, lineLength);
+                        Marshal.Copy(buffer, 0, IntPtr.Add(destData.Scan0, destOffset), lineLength);
 
-                        if (pixelColor.A > 0 & pixelColor.A < 255)
+                        srcOffset += srcData.Stride;
+                        destOffset += destData.Stride;
+
+                        for (int x = 3; x < lineLength; x += 4)
                         {
-                            isAlplaBitmap = true;
+                            byte alpha = buffer[x];
+                            if (alpha > 0 & alpha < 255)
+                            {
+                                isAlplaBitmap = true;
+                            }
                         }
-
-                        result.SetPixel(x, y, pixelColor);
                     }
+                } finally
+                {
+                    result.UnlockBits(destData);
                 }
             }
             finally
