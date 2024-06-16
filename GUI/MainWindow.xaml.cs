@@ -1,6 +1,9 @@
 ﻿using Ookii.Dialogs.Wpf;
 using System;
 using System.IO;
+using System.Reactive.Concurrency;
+using System.Reactive.Linq;
+using System.Threading;
 using System.Windows;
 using Thumbnail_Generator_Library;
 
@@ -44,9 +47,30 @@ namespace Thumbnail_Generator_GUI
                 EnableControls();
                 return;
             }
-            
+
             Progress<float> progress = new(percentage => SetProgress(percentage));
-            int result = await ProcessHandler.GenerateThumbnailsForFolder(
+
+            CancellationTokenSource cts = new CancellationTokenSource();
+            CancellationToken cancellationToken = cts.Token;
+
+            Observable
+                .Create<string>(observable =>
+                {
+                    var start = DateTimeOffset.Now;
+
+                    return
+                        Observable
+                        .Interval(TimeSpan.FromSeconds(0.1))
+                        .TakeUntil(aa => cts.IsCancellationRequested)
+                        .Select(x => DateTimeOffset.Now.Subtract(start).ToString(@"hh\:mm\:ss"))
+                        .DistinctUntilChanged()
+                        .Subscribe(observable);
+                })
+                .SubscribeOn(TaskPoolScheduler.Default)
+                .ObserveOn(SynchronizationContext.Current)
+                .Subscribe(x => ElapsedLabel.Content = x);
+
+            long elapsedMillis = await ProcessHandler.GenerateThumbnailsForFolder(
                 progress,
                 TargetFolder.Text,
                 (int)MaxThumbCount.Value,
@@ -54,8 +78,13 @@ namespace Thumbnail_Generator_GUI
                 RecursiveChk.IsChecked.GetValueOrDefault(),
                 CleanChk.IsChecked.GetValueOrDefault(),
                 SkipExistingChk.IsChecked.GetValueOrDefault(),
-                UseShortChk.IsChecked.GetValueOrDefault()
+                UseShortChk.IsChecked.GetValueOrDefault(),
+                StackedChk.IsChecked.GetValueOrDefault()
             );
+
+            cts.Cancel();
+
+            SetLastDurationTime(elapsedMillis);
 
             EnableControls();
         }
@@ -73,7 +102,7 @@ namespace Thumbnail_Generator_GUI
             ProgressLabel.Visibility = Visibility.Hidden;
             CurrentProgress.Value = 0;
             ProgressLabel.Content = "0%";
-            
+
             TargetFolder.IsEnabled = true;
             BrowseBtn.IsEnabled = true;
             RecursiveChk.IsEnabled = true;
@@ -90,7 +119,7 @@ namespace Thumbnail_Generator_GUI
             StartBtn.Visibility = Visibility.Hidden;
             CurrentProgress.Visibility = Visibility.Visible;
             ProgressLabel.Visibility = Visibility.Visible;
-            
+
             TargetFolder.IsEnabled = false;
             BrowseBtn.IsEnabled = false;
             RecursiveChk.IsEnabled = false;
@@ -107,10 +136,16 @@ namespace Thumbnail_Generator_GUI
             ProgressLabel.Content = string.Format("{0:0.##}", percentage) + "%";
         }
 
+        public void SetLastDurationTime(long elapsedMillis)
+        {
+            StatusLbl.Text = "Last run duration: " + TimeSpan.FromMilliseconds(elapsedMillis).ToString(@"hh\:mm\:ss\.fff");
+        }
+
         public void ResetProgress()
         {
             CurrentProgress.Value = 0;
-            ProgressLabel.Content = "Initializing..";
+            ProgressLabel.Content = "Initializing...";
+            ElapsedLabel.Content = "00:00:00";
         }
     }
 }
