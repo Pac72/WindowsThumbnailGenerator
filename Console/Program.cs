@@ -27,7 +27,7 @@ namespace Thumbnail_Generator_Console
             [Option ('c', "shortcover", Required = false, Default = false, HelpText = "Uses shorter cover design to reveal more contents.")]
             public bool ShortCover { get; set; }
 
-            [Option ('m', "maxthumbs", Required = false, Default = 3, HelpText = "Define maximum number of content to include in thumbnail.")]
+            [Option ('m', "maxthumbs", Required = false, Default = 4, HelpText = "Define maximum number of content to include in thumbnail.")]
             public int MaxThumbCount { get; set; }
 
             [Option ('t', "maxthreads", Required = false, Default = 1, HelpText = "Define maximum number of threads to use.")]
