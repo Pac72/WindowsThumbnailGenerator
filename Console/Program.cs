@@ -32,6 +32,9 @@ namespace Thumbnail_Generator_Console
 
             [Option ('t', "maxthreads", Required = false, Default = 1, HelpText = "Define maximum number of threads to use.")]
             public int MaxThreads { get; set; }
+
+            [Option('k', "stacked", Required = false, Default = false, HelpText = "Uses stacked thumbnail format instead of 4 quadrants.")]
+            public bool Stacked { get; set; }
         }
 
         static async Task Main(string[] args)
@@ -60,7 +63,8 @@ namespace Thumbnail_Generator_Console
                     opts.Recurse,
                     opts.ClearCache,
                     opts.SkipExisting,
-                    opts.ShortCover
+                    opts.ShortCover,
+                    opts.Stacked
                 );
             }
 
