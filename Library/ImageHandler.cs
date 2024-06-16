@@ -1,4 +1,6 @@
 ﻿using ImageMagick;
+using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 
@@ -32,13 +34,109 @@ namespace Thumbnail_Generator_Library
                 fgImage = new(BitmapToArray(Properties.Resources.Foreground));
                 contents.Crop(setContentWidth, setContentHeight);
             }
-            
+
             bgImage.Composite(contents, Gravity.Center, xOffset, yOffset, CompositeOperator.Over);
             bgImage.Composite(fgImage, Gravity.Center, CompositeOperator.Over);
             ExportImage(bgImage.ToByteArray(), filePath);
 
             contents.Dispose();
             fgImage.Dispose();
+        }
+
+        private static readonly int thumbContentWidth = 256;
+        private static readonly int thumbContentHeight = 256;
+
+        public static void GenerateThumbnail4(string[] pathsArray, string filePath)
+        {
+            using MagickImage bgImage = new(BitmapToArray(Properties.Resources.Background));
+
+            Debug.Assert(pathsArray.Length <= 4);
+
+            MagickImage contents;
+
+            contents = new(CompositeThumbnail4(pathsArray, thumbContentWidth, thumbContentHeight));
+
+            ExportImage(contents.ToByteArray(), filePath);
+
+            contents.Dispose();
+        }
+
+        private static byte[] CompositeThumbnail4(string[] pathsArray, int contentWidth, int contentHeight)
+        {
+            Debug.Assert(pathsArray.Length <= 4);
+
+            int thumbnailWidth = contentWidth / 2;
+            int thumbnailHeight = contentHeight / 2;
+
+            using MagickImageCollection magickCollection = new();
+
+            int nn = pathsArray.Length < 4 ? pathsArray.Length : 4;
+            for (int ii = 0; ii < nn; ii++)
+            {
+                string path = pathsArray[ii];
+                FileAttributes attr = File.GetAttributes(path);
+                if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
+                {
+                    string iconPath = path + "\\thumb.ico";
+                    if (File.Exists(iconPath))
+                    {
+                        path = iconPath;
+                    }
+                }
+
+                using Bitmap thumb = WindowsThumbnailProvider.GetThumbnail(
+                    path, 1024, 1024, ThumbnailOptions.None);
+
+                using MagickImage thumbModified = new(BitmapToArray(thumb));
+                thumbModified.BackgroundColor = MagickColors.Transparent;
+
+                if (nn == 1)
+                {
+                    thumbModified.Scale(contentWidth, contentHeight);
+
+                    // center
+                    thumbModified.Extent(0, 0, contentWidth, contentHeight);
+                } else
+                { 
+                    thumbModified.Scale(thumbnailWidth, thumbnailHeight);
+
+                    // center
+                    thumbModified.Extent(
+                        -(thumbnailWidth - thumbModified.Width) / 2, -(thumbnailHeight - thumbModified.Height) / 2,
+                        thumbnailWidth, thumbnailHeight
+                    );
+
+                    switch (ii)
+                    {
+                        case 0:
+                            thumbModified.Extent(0, 0, contentWidth, contentHeight);
+                            break;
+                        case 1:
+                            thumbModified.Extent(-thumbnailWidth, 0, contentWidth, contentHeight);
+                            break;
+                        case 2:
+                            thumbModified.Extent(0, -thumbnailHeight, contentWidth, contentHeight);
+                            break;
+                        case 3:
+                            thumbModified.Extent(-thumbnailWidth, -thumbnailHeight, contentWidth, contentHeight);
+                            break;
+                        default:
+                            throw new InvalidDataException("Should not get here but ii=" + ii);
+                    }
+                }
+
+                thumbModified.RePage();
+
+                MagickImage compositeImage = new(thumbModified.ToByteArray());
+
+                magickCollection.Add(compositeImage);
+
+                thumb.Dispose();
+            }
+
+            byte[] resultBytes = magickCollection.Mosaic().ToByteArray();
+
+            return resultBytes;
         }
 
         private static byte[] CompositeThumbnail(string[] fileArray, int contentWidth, int contentHeight)
@@ -142,6 +240,6 @@ namespace Thumbnail_Generator_Library
                 Debug.WriteLine("ExportImage(" + filePath + "): EXCEPTION " + ex.Message);
                 return;
             }
-        }
+         }
     }
 }
