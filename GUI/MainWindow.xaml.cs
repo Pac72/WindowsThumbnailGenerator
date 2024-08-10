@@ -37,6 +37,8 @@ namespace Thumbnail_Generator_GUI
             DisableControls();
             ResetProgress();
 
+            try
+            {
             if (TargetFolder.Text.Length <= 0)
             {
                 _ = ModernWpf.MessageBox.Show("You didn't choose a folder!", "Error!", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -94,8 +96,10 @@ namespace Thumbnail_Generator_GUI
             cts.Cancel();
                 SetLastDurationTime(TargetFolder.Text, elapsedMillis);
             }
-
+            finally
+            {
             EnableControls();
+        }
         }
 
         private void CleanChk_Checked(object sender, RoutedEventArgs e)
