@@ -92,8 +92,8 @@ namespace Thumbnail_Generator_GUI
                 ));
 
             cts.Cancel();
-
-            SetLastDurationTime(elapsedMillis);
+                SetLastDurationTime(TargetFolder.Text, elapsedMillis);
+            }
 
             EnableControls();
         }
@@ -145,9 +145,9 @@ namespace Thumbnail_Generator_GUI
             ProgressLabel.Content = string.Format("{0:0.##}", percentage) + "%";
         }
 
-        public void SetLastDurationTime(long elapsedMillis)
+        public void SetLastDurationTime(string path, long elapsedMillis)
         {
-            StatusLbl.Text = "Last run duration: " + TimeSpan.FromMilliseconds(elapsedMillis).ToString(@"hh\:mm\:ss\.fff");
+            StatusLbl.Text = "Last run duration: " + TimeSpan.FromMilliseconds(elapsedMillis).ToString(@"hh\:mm\:ss\.fff") + " (path " + path + ")";
         }
 
         public void ResetProgress()
