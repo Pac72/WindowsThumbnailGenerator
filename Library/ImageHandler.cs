@@ -84,7 +84,7 @@ namespace Thumbnail_Generator_Library
                     }
                 }
 
-                using Bitmap thumb = WindowsThumbnailProvider.GetThumbnail(
+                using Bitmap thumb = WindowsThumbnailProviderEx.GetThumbnail(
                     path, 1024, 1024, ThumbnailOptions.None);
 
                 using MagickImage thumbModified = new(BitmapToArray(thumb));
@@ -146,7 +146,7 @@ namespace Thumbnail_Generator_Library
             bool isFirst = true;
             foreach (string filePath in fileArray)
             {
-                using Bitmap thumb = WindowsThumbnailProvider.GetThumbnail(
+                using Bitmap thumb = WindowsThumbnailProviderEx.GetThumbnail(
                     filePath, 1024, 1024, ThumbnailOptions.None);
                 using MagickImage thumbModified = new(BitmapToArray(thumb));
 
