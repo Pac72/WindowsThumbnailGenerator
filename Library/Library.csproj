@@ -6,6 +6,7 @@
     <RootNamespace>Thumbnail_Generator_Library</RootNamespace>
     <AssemblyName>Thumbnail_Generator_Library</AssemblyName>
     <Version>3.0.1</Version>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
