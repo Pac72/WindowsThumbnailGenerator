@@ -39,67 +39,67 @@ namespace Thumbnail_Generator_GUI
 
             try
             {
-            if (TargetFolder.Text.Length <= 0)
-            {
-                _ = ModernWpf.MessageBox.Show("You didn't choose a folder!", "Error!", MessageBoxButton.OK, MessageBoxImage.Error);
-                EnableControls();
-                return;
-            } else if (!Directory.Exists(TargetFolder.Text))
-            {
-                _ = ModernWpf.MessageBox.Show("The directory you chose does not exist!", "Error!", MessageBoxButton.OK, MessageBoxImage.Error);
-                EnableControls();
-                return;
-            }
-
-            Progress<float> progress = new(percentage => SetProgress(percentage));
-
-            CancellationTokenSource cts = new CancellationTokenSource();
-            CancellationToken cancellationToken = cts.Token;
-
-            Observable
-                .Create<string>(observable =>
+                if (TargetFolder.Text.Length <= 0)
                 {
-                    var start = DateTimeOffset.Now;
+                    _ = ModernWpf.MessageBox.Show("You didn't choose a folder!", "Error!", MessageBoxButton.OK, MessageBoxImage.Error);
+                    EnableControls();
+                    return;
+                } else if (!Directory.Exists(TargetFolder.Text))
+                {
+                    _ = ModernWpf.MessageBox.Show("The directory you chose does not exist!", "Error!", MessageBoxButton.OK, MessageBoxImage.Error);
+                    EnableControls();
+                    return;
+                }
 
-                    return
-                        Observable
-                        .Interval(TimeSpan.FromSeconds(0.1))
-                        .TakeUntil(aa => cts.IsCancellationRequested)
-                        .Select(x => DateTimeOffset.Now.Subtract(start).ToString(@"hh\:mm\:ss"))
-                        .DistinctUntilChanged()
-                        .Subscribe(observable);
-                })
-                .SubscribeOn(TaskPoolScheduler.Default)
-                .ObserveOn(SynchronizationContext.Current)
-                .Subscribe(x => ElapsedLabel.Content = x);
+                Progress<float> progress = new(percentage => SetProgress(percentage));
 
-                string targetFolder = TargetFolder.Text;
-                int maxThumbCount = (int)MaxThumbCount.Value;
-                int maxThreadsCount = (int)MaxThreadsCount.Value;
-                bool recursive = RecursiveChk.IsChecked.GetValueOrDefault();
-                bool clean = CleanChk.IsChecked.GetValueOrDefault();
-                bool skipExisting = SkipExistingChk.IsChecked.GetValueOrDefault();
-                bool useShort = UseShortChk.IsChecked.GetValueOrDefault();
-                bool stacked = StackedChk.IsChecked.GetValueOrDefault();
-                long elapsedMillis = await Task.Run(() => ProcessHandler.GenerateThumbnailsForFolder(
-                progress,
-                    targetFolder,
-                    maxThumbCount,
-                    maxThreadsCount,
-                    recursive,
-                    clean,
-                    skipExisting,
-                    useShort,
-                    stacked
-                ));
+                CancellationTokenSource cts = new CancellationTokenSource();
+                CancellationToken cancellationToken = cts.Token;
 
-            cts.Cancel();
+                Observable
+                    .Create<string>(observable =>
+                    {
+                        var start = DateTimeOffset.Now;
+
+                        return
+                            Observable
+                            .Interval(TimeSpan.FromSeconds(0.1))
+                            .TakeUntil(aa => cts.IsCancellationRequested)
+                            .Select(x => DateTimeOffset.Now.Subtract(start).ToString(@"hh\:mm\:ss"))
+                            .DistinctUntilChanged()
+                            .Subscribe(observable);
+                    })
+                    .SubscribeOn(TaskPoolScheduler.Default)
+                    .ObserveOn(SynchronizationContext.Current)
+                    .Subscribe(x => ElapsedLabel.Content = x);
+
+                    string targetFolder = TargetFolder.Text;
+                    int maxThumbCount = (int)MaxThumbCount.Value;
+                    int maxThreadsCount = (int)MaxThreadsCount.Value;
+                    bool recursive = RecursiveChk.IsChecked.GetValueOrDefault();
+                    bool clean = CleanChk.IsChecked.GetValueOrDefault();
+                    bool skipExisting = SkipExistingChk.IsChecked.GetValueOrDefault();
+                    bool useShort = UseShortChk.IsChecked.GetValueOrDefault();
+                    bool stacked = StackedChk.IsChecked.GetValueOrDefault();
+                    long elapsedMillis = await Task.Run(() => ProcessHandler.GenerateThumbnailsForFolder(
+                    progress,
+                        targetFolder,
+                        maxThumbCount,
+                        maxThreadsCount,
+                        recursive,
+                        clean,
+                        skipExisting,
+                        useShort,
+                        stacked
+                    ));
+
+                cts.Cancel();
                 SetLastDurationTime(TargetFolder.Text, elapsedMillis);
             }
             finally
             {
-            EnableControls();
-        }
+                EnableControls();
+            }
         }
 
         private void CleanChk_Checked(object sender, RoutedEventArgs e)
