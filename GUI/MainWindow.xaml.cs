@@ -4,6 +4,7 @@ using System.IO;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Thumbnail_Generator_Library;
 
@@ -70,17 +71,25 @@ namespace Thumbnail_Generator_GUI
                 .ObserveOn(SynchronizationContext.Current)
                 .Subscribe(x => ElapsedLabel.Content = x);
 
-            long elapsedMillis = await ProcessHandler.GenerateThumbnailsForFolder(
+                string targetFolder = TargetFolder.Text;
+                int maxThumbCount = (int)MaxThumbCount.Value;
+                int maxThreadsCount = (int)MaxThreadsCount.Value;
+                bool recursive = RecursiveChk.IsChecked.GetValueOrDefault();
+                bool clean = CleanChk.IsChecked.GetValueOrDefault();
+                bool skipExisting = SkipExistingChk.IsChecked.GetValueOrDefault();
+                bool useShort = UseShortChk.IsChecked.GetValueOrDefault();
+                bool stacked = StackedChk.IsChecked.GetValueOrDefault();
+                long elapsedMillis = await Task.Run(() => ProcessHandler.GenerateThumbnailsForFolder(
                 progress,
-                TargetFolder.Text,
-                (int)MaxThumbCount.Value,
-                (int)MaxThreadsCount.Value,
-                RecursiveChk.IsChecked.GetValueOrDefault(),
-                CleanChk.IsChecked.GetValueOrDefault(),
-                SkipExistingChk.IsChecked.GetValueOrDefault(),
-                UseShortChk.IsChecked.GetValueOrDefault(),
-                StackedChk.IsChecked.GetValueOrDefault()
-            );
+                    targetFolder,
+                    maxThumbCount,
+                    maxThreadsCount,
+                    recursive,
+                    clean,
+                    skipExisting,
+                    useShort,
+                    stacked
+                ));
 
             cts.Cancel();
 
