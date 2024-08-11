@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Thumbnail_Generator_Library
@@ -19,7 +20,8 @@ namespace Thumbnail_Generator_Library
         private static volatile float progressPercentage;
 
         public static async Task<long> GenerateThumbnailsForFolder(
-            IProgress<float> progress,
+            IProgress<InitProgressInfo> initializationProgress,
+            IProgress<float> generationProgress,
             string rootFolder,
             int maxThumbCount,
             int maxThreads,
@@ -27,109 +29,121 @@ namespace Thumbnail_Generator_Library
             bool clearCache,
             bool skipExisting,
             bool shortCover,
-            bool stacked
+            bool stacked,
+            CancellationToken cancellationToken
         )
         {
             var stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            progressCount = 0;
-            progressPercentage = 0;
-
-            DirNode rootNode;
-            SortedDictionary<int,List<DirNode>> dict;
-
-            if (recurse)
+            try
             {
-                rootNode = PathHandler.GetDirTree(rootFolder, "*");
-                dict = rootNode.DepthFirstNodes();
-            } else
-            {
-                rootNode = new DirNode(rootFolder, 0);
-                List<DirNode> list = new List<DirNode>() { rootNode };
-                dict = new SortedDictionary<int, List<DirNode>>();
-                dict[rootNode.Level] = list;
-            }
+                progressCount = 0;
+                progressPercentage = 0;
 
-            int treeSize = rootNode.Size();
+                DirNode rootNode;
+                SortedDictionary<int, List<DirNode>> dict;
 
-            foreach(KeyValuePair<int, List<DirNode>> entry in dict.Reverse())
-            {
-                List<DirNode> dirNodes = entry.Value;
-
-                await Task.Run(() =>
+                if (recurse)
                 {
-                    _ = Parallel.ForEach(
-                    dirNodes,
-                    new ParallelOptions { MaxDegreeOfParallelism = maxThreads },
-                    node =>
+                    rootNode = PathHandler.GetDirTree(rootFolder, "*", initializationProgress, cancellationToken);
+                    dict = rootNode.DepthFirstNodes(cancellationToken);
+                } else
+                {
+                    rootNode = new DirNode(rootFolder, 0);
+                    List<DirNode> list = new List<DirNode>() { rootNode };
+                    dict = new SortedDictionary<int, List<DirNode>>();
+                    dict[rootNode.Level] = list;
+                }
+
+                int treeSize = rootNode.Size();
+
+                foreach (KeyValuePair<int, List<DirNode>> entry in dict.Reverse())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    List<DirNode> dirNodes = entry.Value;
+
+                    await Task.Run(() =>
                     {
-                        progressCount++;
-                        progressPercentage = (float)progressCount / treeSize * 100;
-                        progress.Report(progressPercentage);
-                        string directory = node.Path;
-                    
-                        string iconLocation = Path.Combine(directory, "thumb.ico");
-                        string iniLocation = Path.Combine(directory, "desktop.ini");
-
-                        if (skipExisting && File.Exists(iniLocation))
+                        _ = Parallel.ForEach(
+                        dirNodes,
+                        new ParallelOptions { MaxDegreeOfParallelism = maxThreads },
+                        node =>
                         {
-                            return;
-                        }
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                return;
+                            }
+                            progressCount++;
+                            progressPercentage = (float)progressCount / treeSize * 100;
+                            generationProgress.Report(progressPercentage);
+                            string directory = node.Path;
 
-                        FSHandler.UnsetSystem(iconLocation);
+                            string iconLocation = Path.Combine(directory, "thumb.ico");
+                            string iniLocation = Path.Combine(directory, "desktop.ini");
 
-                        List<string> paths = new();
+                            if (skipExisting && File.Exists(iniLocation))
+                            {
+                                return;
+                            }
 
-                        IEnumerable<string> dirEnum = Directory
-                        .EnumerateDirectories(directory, "*.*")
-                        .Where(path => DirectoryContainsFilesOrFolders(path))
-                        .Take(maxThumbCount)
-                        ;
+                            FSHandler.UnsetSystem(iconLocation);
 
-                        paths.AddRange(dirEnum);
+                            List<string> paths = new();
 
-                        if (paths.Count < maxThumbCount)
-                        {
-                            IEnumerable<string> fileEnum = Directory
-                            .EnumerateFiles(directory, "*.*")
-                            .Where(path => supportedFilesSet.Contains(Path.GetExtension(path).ToLower()))
-                            .Take(maxThumbCount - paths.Count)
+                            IEnumerable<string> dirEnum = Directory
+                            .EnumerateDirectories(directory, "*.*")
+                            .Where(path => DirectoryContainsFilesOrFolders(path))
+                            .Take(maxThumbCount)
                             ;
-                            paths.AddRange(fileEnum);
-                        }
 
-                        string[] pathsArray = paths.ToArray();
+                            paths.AddRange(dirEnum);
 
-                        if (pathsArray.Length <= 0)
-                        {
-                            Debug.WriteLine(directory + ": no supported files");
-                            return;
-                        }
-                        Debug.WriteLine(directory + ": " + string.Join(", ", pathsArray));
+                            if (paths.Count < maxThumbCount)
+                            {
+                                IEnumerable<string> fileEnum = Directory
+                                .EnumerateFiles(directory, "*.*")
+                                .Where(path => supportedFilesSet.Contains(Path.GetExtension(path).ToLower()))
+                                .Take(maxThumbCount - paths.Count)
+                                ;
+                                paths.AddRange(fileEnum);
+                            }
 
-                        if (stacked)
-                        {
-                            ImageHandler.GenerateThumbnail(pathsArray, iconLocation, shortCover);
-                        }
-                        else
-                        {
-                            ImageHandler.GenerateThumbnail4(pathsArray, iconLocation);
-                        }
+                            string[] pathsArray = paths.ToArray();
 
-                        FSHandler.SetSystem(iconLocation);
-                        FSHandler.ApplyFolderIcon(directory, @".\thumb.ico");
-                    });
-                });
+                            if (pathsArray.Length <= 0)
+                            {
+                                //Debug.WriteLine(directory + ": no supported files");
+                                return;
+                            }
+                            Debug.WriteLine(directory + ": " + string.Join(", ", pathsArray));
+
+                            if (stacked)
+                            {
+                                ImageHandler.GenerateThumbnail(pathsArray, iconLocation, shortCover);
+                            }
+                            else
+                            {
+                                ImageHandler.GenerateThumbnail4(pathsArray, iconLocation);
+                            }
+
+                            FSHandler.SetSystem(iconLocation);
+                            FSHandler.ApplyFolderIcon(directory, @".\thumb.ico");
+                        });
+                    }, cancellationToken);
+                }
+
+                if (clearCache) {
+                    await Task.Run(() => {
+                        FSHandler.ClearCache();
+                    }, cancellationToken);
+                }
+
             }
-
-            if (clearCache){
-                await Task.Run(() => {
-                   FSHandler.ClearCache();
-                });
+            finally
+            {
+                stopwatch.Stop();
             }
-
-            stopwatch.Stop();
 
             return stopwatch.ElapsedMilliseconds;
         }

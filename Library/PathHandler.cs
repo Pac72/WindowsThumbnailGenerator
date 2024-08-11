@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace Thumbnail_Generator_Library
 {
@@ -11,14 +12,15 @@ namespace Thumbnail_Generator_Library
         public string Path { get; }
         public int Level { get; }
 
-        public DirNode(string pth, int lvl)
+
+        internal DirNode(string pth, int lvl)
         {
             Path = pth;
             Level = lvl;
             SubDirs = new();
         }
 
-        public void Add(DirNode node)
+        internal void Add(DirNode node)
         {
             SubDirs.Add(node);
         }
@@ -43,15 +45,16 @@ namespace Thumbnail_Generator_Library
             return Path.CompareTo(other.Path);
         }
 
-        public SortedDictionary<int, List<DirNode>> DepthFirstNodes()
+        public SortedDictionary<int, List<DirNode>> DepthFirstNodes(CancellationToken cancellationToken)
         {
             SortedDictionary<int, List<DirNode>> dict = new();
-            Visit(ref dict);
+            Visit(ref dict, cancellationToken);
             return dict;
         }
 
-        private void Visit(ref SortedDictionary<int, List<DirNode>> dict)
+        private void Visit(ref SortedDictionary<int, List<DirNode>> dict, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             List<DirNode> nodes;
             if (!dict.TryGetValue(Level, out nodes))
             {
@@ -59,9 +62,10 @@ namespace Thumbnail_Generator_Library
                 dict[Level] = nodes;
             }
             nodes.Add(this);
+
             foreach (DirNode node in SubDirs)
             {
-                node.Visit(ref dict);
+                node.Visit(ref dict, cancellationToken);
             }
         }
 
@@ -71,8 +75,16 @@ namespace Thumbnail_Generator_Library
         }
     }
 
+    public struct InitProgressInfo
+    {
+        public int MaxLevel { get; internal set; }
+        public int DirCount { get; internal set; }
+    }
+
     public class PathHandler
     {
+        public static InitProgressInfo ProgressInfo;
+
         public static IEnumerable<string> GetAllDirectoriesOld(string rootDirectory, string searchPattern)
         {
             Stack<string> searchList = new();
@@ -99,7 +111,7 @@ namespace Thumbnail_Generator_Library
             return returnList;
         }
 
-        private static readonly EnumerationOptions RECURSE_OPTIONS = new EnumerationOptions
+        private static readonly EnumerationOptions RECURSE_OPTIONS = new()
         {
             IgnoreInaccessible = true,
             RecurseSubdirectories = true,
@@ -124,28 +136,41 @@ namespace Thumbnail_Generator_Library
             ReturnSpecialDirectories = false
         };
 
-        public static DirNode GetDirTree(string rootDirectory, string searchPattern)
+        public static DirNode GetDirTree(string rootDirectory, string searchPattern, IProgress<InitProgressInfo> initializationProgress, CancellationToken cancellationToken)
         {
+            ProgressInfo.MaxLevel = 0;
+            ProgressInfo.DirCount = 0;
             DirNode rootNode = new DirNode(rootDirectory, 0);
 
-            BuildDirTree(ref rootNode, searchPattern);
+            BuildDirTree(ref rootNode, searchPattern, initializationProgress, cancellationToken);
 
             return rootNode;
         }
 
-        private static void BuildDirTree(ref DirNode parent, string searchPattern)
+        private static void BuildDirTree(ref DirNode parent, string searchPattern, IProgress<InitProgressInfo> initializationProgress, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (parent.Level > ProgressInfo.MaxLevel)
+            {
+                ProgressInfo.MaxLevel = parent.Level;
+            }
+
             DirectoryInfo di = new DirectoryInfo(parent.Path);
 
             IEnumerable<string> directories = di.EnumerateDirectories(searchPattern, NO_RECURSE_OPTIONS)
                 .Where(di => KeepDirectory(di))
                 .Select(di => di.FullName);
 
+            ProgressInfo.DirCount += directories.Count();
+
+            initializationProgress.Report(ProgressInfo);
+
             foreach(string dir in directories)
             {
                 DirNode node = new DirNode(dir, parent.Level + 1);
                 parent.Add(node);
-                BuildDirTree(ref node, searchPattern);
+                BuildDirTree(ref node, searchPattern, initializationProgress, cancellationToken);
             }
         }
 

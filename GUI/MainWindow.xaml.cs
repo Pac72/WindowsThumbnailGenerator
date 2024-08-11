@@ -15,6 +15,8 @@ namespace Thumbnail_Generator_GUI
     /// </summary>
     public partial class MainWindow : Window
     {
+        private CancellationTokenSource cts = null;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -32,8 +34,17 @@ namespace Thumbnail_Generator_GUI
             TargetFolder.Text = folderBrowser.SelectedPath;
         }
 
-        private async void StartBtn_Click(object sender, RoutedEventArgs e)
+        private async void StartStopBtn_Click(object sender, RoutedEventArgs e)
         {
+            if (cts != null)
+            {
+                cts.Cancel();
+                cts.Dispose();
+                cts = null;
+                EnableControls();
+                return;
+            }
+            cts = new CancellationTokenSource();
             DisableControls();
             ResetProgress();
 
@@ -51,9 +62,9 @@ namespace Thumbnail_Generator_GUI
                     return;
                 }
 
-                Progress<float> progress = new(percentage => SetProgress(percentage));
+                Progress<InitProgressInfo> initializationProgress = new(ipi => SetInitializationProgress(ipi));
+                Progress<float> generationProgress = new(percentage => SetProgress(percentage));
 
-                CancellationTokenSource cts = new CancellationTokenSource();
                 CancellationToken cancellationToken = cts.Token;
 
                 Observable
@@ -64,14 +75,14 @@ namespace Thumbnail_Generator_GUI
                         return
                             Observable
                             .Interval(TimeSpan.FromSeconds(0.1))
-                            .TakeUntil(aa => cts.IsCancellationRequested)
+                            .TakeUntil(aa => cancellationToken.IsCancellationRequested)
                             .Select(x => DateTimeOffset.Now.Subtract(start).ToString(@"hh\:mm\:ss"))
                             .DistinctUntilChanged()
                             .Subscribe(observable);
                     })
                     .SubscribeOn(TaskPoolScheduler.Default)
                     .ObserveOn(SynchronizationContext.Current)
-                    .Subscribe(x => ElapsedLabel.Content = x);
+                    .Subscribe(x => StatusLbl.Text = $"Generating... {x}");
 
                     string targetFolder = TargetFolder.Text;
                     int maxThumbCount = (int)MaxThumbCount.Value;
@@ -82,7 +93,8 @@ namespace Thumbnail_Generator_GUI
                     bool useShort = UseShortChk.IsChecked.GetValueOrDefault();
                     bool stacked = StackedChk.IsChecked.GetValueOrDefault();
                     long elapsedMillis = await Task.Run(() => ProcessHandler.GenerateThumbnailsForFolder(
-                    progress,
+                        initializationProgress,
+                        generationProgress,
                         targetFolder,
                         maxThumbCount,
                         maxThreadsCount,
@@ -90,15 +102,21 @@ namespace Thumbnail_Generator_GUI
                         clean,
                         skipExisting,
                         useShort,
-                        stacked
+                        stacked,
+                        cancellationToken
                     ));
 
-                cts.Cancel();
-                SetLastDurationTime(TargetFolder.Text, elapsedMillis);
+                SetLastDurationTime(TargetFolder.Text, elapsedMillis, PathHandler.ProgressInfo);
+            } catch (OperationCanceledException)
+            {
+                SetCanceledMessage(TargetFolder.Text);
             }
             finally
             {
+                cts?.Cancel();
+                cts?.Dispose();
                 EnableControls();
+                cts = null;
             }
         }
 
@@ -109,12 +127,9 @@ namespace Thumbnail_Generator_GUI
 
         public void EnableControls()
         {
-            StartBtn.IsEnabled = true;
-            StartBtn.Visibility = Visibility.Visible;
-            CurrentProgress.Visibility = Visibility.Hidden;
-            ProgressLabel.Visibility = Visibility.Hidden;
+            StartStopBtn.Content = "Start";
             CurrentProgress.Value = 0;
-            ProgressLabel.Content = "0%";
+            ProgressLabel.Content = "";
 
             TargetFolder.IsEnabled = true;
             BrowseBtn.IsEnabled = true;
@@ -128,10 +143,7 @@ namespace Thumbnail_Generator_GUI
 
         public void DisableControls()
         {
-            StartBtn.IsEnabled = false;
-            StartBtn.Visibility = Visibility.Hidden;
-            CurrentProgress.Visibility = Visibility.Visible;
-            ProgressLabel.Visibility = Visibility.Visible;
+            StartStopBtn.Content = "Stop";
 
             TargetFolder.IsEnabled = false;
             BrowseBtn.IsEnabled = false;
@@ -143,22 +155,40 @@ namespace Thumbnail_Generator_GUI
             MaxThreadsCount.IsEnabled = false;
         }
 
+        private static long nextProgressLabelUpdateTicks = 0L;
+        private const long TICKS_PER_MILLISECOND = 10000L;
+        private const long PROGRESS_LABEL_DELTA_MILLIS = 100L * TICKS_PER_MILLISECOND;
+
+        public void SetInitializationProgress(InitProgressInfo initProgressInfo)
+        {
+            long now = DateTime.Now.Ticks;
+            if (now > nextProgressLabelUpdateTicks)
+            {
+                nextProgressLabelUpdateTicks = now + PROGRESS_LABEL_DELTA_MILLIS;
+                ProgressLabel.Content = $"Initializing directory tree: max depth {initProgressInfo.MaxLevel} - {initProgressInfo.DirCount} directories";
+            }
+        }
+
         public void SetProgress(float percentage)
         {
             CurrentProgress.Value = percentage;
             ProgressLabel.Content = string.Format("{0:0.##}", percentage) + "%";
         }
 
-        public void SetLastDurationTime(string path, long elapsedMillis)
+        public void SetLastDurationTime(string path, long elapsedMillis, InitProgressInfo progressInfo)
         {
-            StatusLbl.Text = "Last run duration: " + TimeSpan.FromMilliseconds(elapsedMillis).ToString(@"hh\:mm\:ss\.fff") + " (path " + path + ")";
+            StatusLbl.Text = $"Generation completed in {TimeSpan.FromMilliseconds(elapsedMillis).ToString(@"hh\:mm\:ss\.fff")} (path {path} - {progressInfo.DirCount} directories, max depth {progressInfo.MaxLevel})";
+        }
+
+        public void SetCanceledMessage(string path)
+        {
+            StatusLbl.Text = "Generation canceled (path " + path + ")";
         }
 
         public void ResetProgress()
         {
             CurrentProgress.Value = 0;
             ProgressLabel.Content = "Initializing...";
-            ElapsedLabel.Content = "00:00:00";
         }
     }
 }
