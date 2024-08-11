@@ -20,7 +20,7 @@ namespace Thumbnail_Generator_GUI
         public MainWindow()
         {
             InitializeComponent();
-            MaxThreadsCount.Maximum = Convert.ToInt32(Environment.ProcessorCount);
+            MaxThreadsCount.Maximum = Convert.ToInt32(Environment.ProcessorCount) * 4;
             MaxThreadsCount.Value = Convert.ToInt32(Environment.ProcessorCount);
         }
 
